@@ -1,7 +1,8 @@
 ;; --------------------------------------------------------------------------------
 (ns ld48.core
   (:require [play-clj.core :refer :all]
-            [play-clj.g2d :refer :all]))
+            [play-clj.g2d :refer :all]
+            [play-clj.math :refer :all]))
 
 (declare ld48 title-screen main-screen)
 (def speed 0.25)
@@ -68,7 +69,8 @@
       (let [old-x         (:x entity)
             new-x         (+ old-x torpedo-speed)
             still-active? (< new-x 1280)
-            new-count     (dec (:count entity))]
+            new-count     (dec (:count entity))
+            _ (if (not still-active?) (println "torpedos=" new-count))]
         (if still-active?
           (assoc entity :x new-x)
           (assoc entity :x -128 :active? false :count new-count)))
@@ -94,6 +96,35 @@
     (assoc entity :x (- (:x entity) speed))
     entity))
 
+(defn update-hit-box [{:keys [submarine? torpedo? target?] :as entity}]
+  (if (or submarine? torpedo? target?)
+    (assoc entity :hit-box (rectangle (:x entity) (:y entity) (:width entity) (:height entity)))
+    entity))
+
+(defn set-target-damage [{:keys [torpedo? target? damage] :as entity}]
+  (if target?
+    (assoc entity :damage (inc damage))
+    (if torpedo?
+      (let [new-count (dec (:count entity))
+            _ (println "torpedos=" new-count)]
+        (assoc entity :x -128 :active? false :count new-count))
+      entity)))
+
+(defn torpedo-target-collision [torpedo target entities]
+  (let [new-damage (inc (:damage target))]
+    (if (>= new-damage 3)
+      (map set-target-damage entities)
+      (remove (set target) entities))))
+
+(defn adjust-damage [entities]
+  (let [torpedo (first (filter :torpedo? entities))
+        target (first (filter :target? entities))
+        touched-target (rectangle! (:hit-box torpedo) :overlaps (:hit-box target))]
+    (if touched-target
+      (torpedo-target-collision torpedo target entities)
+      entities)
+    entities))
+
 (defn check-game-over [entities]
   (let [target        (first (filter :target? entities))
         target-x      (:x target)
@@ -113,7 +144,9 @@
        (map move-submarine)
        (adjust-torpedo-y)
        (map move-torpedo)
-       (map move-background)))
+       (map move-background)
+       (map update-hit-box)
+       (adjust-damage)))
 
 (defscreen main-screen
   :on-show
@@ -122,11 +155,11 @@
     (let [background (assoc (texture "MainBackground.png")
                        :x 0 :width (* 4 1280) :background? true)
           submarine (assoc (texture "Submarine.png")
-                      :x 20 :y (/ 720 2) :submarine? true)
+                      :x 20 :y (/ 720 2) :width 128 :height 64 :submarine? true)
           torpedo (assoc (texture "torpedo.png")
-                    :x -256 :y 100 :torpedo? true :count 5 :active? false)
+                    :x -256 :y 100 :width 64 :height 16 :torpedo? true :count 5 :active? false)
           target (assoc (texture "target.png")
-                   :x (- (* 1 1280) 256) :y (- 720 128) :target? true :damage 0)] ;; FIXME
+                   :x (- (* 1 1280) 256) :y (- 720 128) :width 256 :height 128 :target? true :damage 0)] ;; FIXME
       [background submarine torpedo target]))
 
   :on-render
@@ -177,7 +210,7 @@
   (-> main-screen :entities deref)
 
   ;; restart the game
+  (println "----------- restarting game -------------------")
   (app! :post-runnable #(set-screen! ld48 title-screen))
 
-  current-keycodes
   )
