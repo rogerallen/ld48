@@ -7,9 +7,6 @@
 (def speed 0.25)
 (def sub-speed 2.5)
 
-;; current active keycodes
-(defonce current-keycodes (atom #{}))
-
 ;; --------------------------------------------------------------------------------
 (defscreen title-screen
   :on-show
@@ -30,13 +27,10 @@
     (set-screen! ld48 main-screen)))
 
 ;; --------------------------------------------------------------------------------
-(defn is-key-pressed? [kc]
-  (= (first @current-keycodes) kc))
-
 (defn- get-direction []
   (cond
-   (is-key-pressed? (key-code :dpad-up)) :up
-   (is-key-pressed? (key-code :dpad-down)) :down))
+   (key-pressed? :dpad-up) :up
+   (key-pressed? :dpad-down) :down))
 
 (defn move-background [{:keys [background?] :as entity}]
   (if background?
@@ -84,7 +78,7 @@
   :on-key-down
   (fn [screen entities]
     (swap! current-keycodes (fn [x] (conj x (:keycode screen))))
-    (if (is-key-pressed? (key-code :r))
+    (if (key-pressed? :r)
       (app! :post-runnable #(set-screen! ld48 main-screen)))
     entities)
 
@@ -97,10 +91,16 @@
 
 ;; --------------------------------------------------------------------------------
 ;; from tutorial for error handling
-(defscreen blank-screen
+(defscreen error-screen
   :on-render
   (fn [screen entities]
     (clear! 1.0 0.0 0.0 1.0)))
+
+(set-screen-wrapper! (fn [screen screen-fn]
+                       (try (screen-fn)
+                         (catch Exception e
+                           (.printStackTrace e)
+                           (set-screen! ld48 error-screen)))))
 
 ;; --------------------------------------------------------------------------------
 (defgame ld48
@@ -109,25 +109,18 @@
     (set-screen! this title-screen)))
 
 ;; --------------------------------------------------------------------------------
-(set-screen-wrapper! (fn [screen screen-fn]
-                       (try (screen-fn)
-                         (catch Exception e
-                           (.printStackTrace e)
-                           (set-screen! ld48 blank-screen)))))
-
-;; --------------------------------------------------------------------------------
 ;; here are repl helpers
 (comment
   ;; instarepl this code & desktop_launcher, make instarepl and
   ;; uncomment & exec the following code.  Don't exec this here.
-  ;(use 'ld48.core.desktop-launcher)
+  (use 'ld48.core.desktop-launcher)
   ;(-main)
 
   ;; look at the main game state: select code & cmd-enter
-  (-> title-screen :entities deref)
   (-> title-screen :screen deref)
-  (-> main-screen :entities deref)
+  (-> title-screen :entities deref)
   (-> main-screen :screen deref)
+  (-> main-screen :entities deref)
 
   ;; restart the game
   (app! :post-runnable #(set-screen! ld48 title-screen))
