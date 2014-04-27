@@ -69,8 +69,7 @@
       (let [old-x         (:x entity)
             new-x         (+ old-x torpedo-speed)
             still-active? (< new-x 1280)
-            new-count     (dec (:count entity))
-            _ (if (not still-active?) (println "torpedos=" new-count))]
+            new-count     (dec (:count entity))]
         (if still-active?
           (assoc entity :x new-x)
           (assoc entity :x -128 :active? false :count new-count)))
@@ -105,16 +104,17 @@
   (if target?
     (assoc entity :damage (inc damage))
     (if torpedo?
-      (let [new-count (dec (:count entity))
-            _ (println "torpedos=" new-count)]
+      (let [new-count (dec (:count entity))]
         (assoc entity :x -128 :active? false :count new-count))
       entity)))
 
 (defn torpedo-target-collision [torpedo target entities]
   (let [new-damage (inc (:damage target))]
-    (if (>= new-damage 3)
+    (if (<= new-damage 3)
       (map set-target-damage entities)
-      (remove (set target) entities))))
+      (remove (set target) entities)
+      ;;entities
+      )))
 
 (defn adjust-damage [entities]
   (let [torpedo (first (filter :torpedo? entities))
@@ -122,19 +122,21 @@
         touched-target (rectangle! (:hit-box torpedo) :overlaps (:hit-box target))]
     (if touched-target
       (torpedo-target-collision torpedo target entities)
-      entities)
-    entities))
+      entities)))
 
 (defn check-game-over [entities]
   (let [target        (first (filter :target? entities))
         target-x      (:x target)
         target-damage (:damage target)
         submarine-x   (:x (first (filter :submarine? entities)))]
+    (when (>= target-damage 3)
+      (reset! game-state :win)
+      (app! :post-runnable #(set-screen! ld48 title-screen)))
     (when (> (+ submarine-x 100) target-x)
-      (if (> target-damage 3)
-        (reset! game-state :win)
-        (reset! game-state :lose))
-      (app! :post-runnable #(set-screen! ld48 title-screen)))))
+        (if (> target-damage 3)
+          (reset! game-state :win)
+          (reset! game-state :lose))
+        (app! :post-runnable #(set-screen! ld48 title-screen)))))
 
 (defn per-render-update [entities]
   ;; Game Over?
@@ -208,6 +210,12 @@
   (-> title-screen :entities deref)
   (-> main-screen :screen deref)
   (-> main-screen :entities deref)
+
+  (let [hb1 (:hit-box (first (filter :torpedo? (-> main-screen :entities deref))))
+        hb2 (:hit-box (first (filter :target? (-> main-screen :entities deref))))
+        hb1 (rectangle 0 0 10 10)
+        hb2 (rectangle 5 5 10 10)]
+    (rectangle! hb1 :overlaps hb2))
 
   ;; restart the game
   (println "----------- restarting game -------------------")
