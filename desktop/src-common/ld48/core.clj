@@ -5,7 +5,10 @@
 
 (declare ld48 title-screen main-screen)
 (def speed 0.25)
-(def sub-speed 3.5)
+(def sub-speed 2.5)
+
+;; current active keycodes
+(defonce current-keycodes (atom #{}))
 
 ;; --------------------------------------------------------------------------------
 (defscreen title-screen
@@ -27,13 +30,13 @@
     (set-screen! ld48 main-screen)))
 
 ;; --------------------------------------------------------------------------------
-(defn is-key-pressed? [screen kc]
-  (= (:keycode screen) kc))
+(defn is-key-pressed? [kc]
+  (= (first @current-keycodes) kc))
 
-(defn- get-direction [screen]
+(defn- get-direction []
   (cond
-   (is-key-pressed? screen (key-code :dpad-up)) :up
-   (is-key-pressed? screen (key-code :dpad-down)) :down))
+   (is-key-pressed? (key-code :dpad-up)) :up
+   (is-key-pressed? (key-code :dpad-down)) :down))
 
 (defn move-background [{:keys [background?] :as entity}]
   (if background?
@@ -46,7 +49,7 @@
           new-y (case direction
                   :up (+ old-y sub-speed)
                   :down (- old-y sub-speed))
-          new-y (min (max new-y 0) 720)]
+          new-y (min (max new-y 0) (- 720 64))]
       (assoc entity :y new-y :direction direction))
     entity))
 
@@ -54,7 +57,13 @@
   (map #(update-submarine-position direction %) entities))
 
 (defn per-render-update [entities]
-  (map move-background entities))
+  (let [direction (get-direction)]
+    ;;(if (> (count @current-keycodes) 0)
+    ;;  (println "keycodes=" @current-keycodes))
+    (->> (if direction
+           (move-player direction entities)
+           entities)
+         (map move-background))))
 
 (defscreen main-screen
   :on-show
@@ -74,12 +83,17 @@
 
   :on-key-down
   (fn [screen entities]
-    (let [direction (get-direction screen)]
-      (println "direction=" direction)
-      (cond
-       (is-key-pressed? screen (key-code :r)) (app! :post-runnable #(set-screen! ld48 main-screen))
-       direction (move-player direction entities)
-       :else entities))))
+    (swap! current-keycodes (fn [x] (conj x (:keycode screen))))
+    (if (is-key-pressed? (key-code :r))
+      (app! :post-runnable #(set-screen! ld48 main-screen)))
+    entities)
+
+  :on-key-up
+  (fn [screen entities]
+    (swap! current-keycodes (fn [x] (disj x (:keycode screen))))
+    entities)
+
+  )
 
 ;; --------------------------------------------------------------------------------
 ;; from tutorial for error handling
@@ -118,4 +132,5 @@
   ;; restart the game
   (app! :post-runnable #(set-screen! ld48 title-screen))
 
+  current-keycodes
   )
