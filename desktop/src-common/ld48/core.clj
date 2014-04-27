@@ -5,7 +5,7 @@
 
 (declare ld48 title-screen main-screen)
 (def speed 0.25)
-(def sub-speed 5.0)
+(def sub-speed 3.5)
 
 ;; --------------------------------------------------------------------------------
 (defscreen title-screen
@@ -27,14 +27,13 @@
     (set-screen! ld48 main-screen)))
 
 ;; --------------------------------------------------------------------------------
-(defn is-pressed? [screen x]
-  (= (:keycode screen) (key-code x)))
+(defn is-key-pressed? [screen kc]
+  (= (:keycode screen) kc))
 
 (defn- get-direction [screen]
-  ;;(println (:keycode screen) (key-code :dpad-up) (key-code :dpad-down))
   (cond
-   (is-pressed? screen :dpad-up) :up
-   (is-pressed? screen :dpad-down) :down))
+   (is-key-pressed? screen (key-code :dpad-up)) :up
+   (is-key-pressed? screen (key-code :dpad-down)) :down))
 
 (defn move-background [{:keys [background?] :as entity}]
   (if background?
@@ -78,7 +77,7 @@
     (let [direction (get-direction screen)]
       (println "direction=" direction)
       (cond
-       (is-pressed? screen :r) (app! :post-runnable #(set-screen! ld48 main-screen))
+       (is-key-pressed? screen (key-code :r)) (app! :post-runnable #(set-screen! ld48 main-screen))
        direction (move-player direction entities)
        :else entities))))
 
