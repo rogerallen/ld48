@@ -6,6 +6,7 @@
 (declare ld48 title-screen main-screen)
 (def speed 0.25)
 (def sub-speed 2.5)
+(def torpedo-speed 10.0)
 
 (defonce game-state (atom :startup))
 
@@ -44,11 +45,37 @@
    (key-pressed? :dpad-up) :up
    (key-pressed? :dpad-down) :down))
 
-(defn get-launch [entities]
-  (let [torpedo (first (filter :torpedo? entities))]
-    (and (> (:count torpedo) 0)
-         (not (:active? torpedo))
-         (key-pressed? :dpad-right))))
+(defn set-torpedo-y [y {:keys [torpedo? active?] :as entity}]
+  (if torpedo?
+    (assoc entity :y (+ y 16))
+    entity))
+
+(defn adjust-torpedo-y [entities]
+  (let [submarine (first (filter :submarine? entities))
+        torpedo (first (filter :torpedo? entities))]
+    (if (not (:active? torpedo))
+      (map #(set-torpedo-y (:y submarine) %) entities)
+      entities)))
+
+(defn launch-torpedo? [torpedo]
+  (and (> (:count torpedo) 0)
+       (not (:active? torpedo))
+       (key-pressed? :dpad-right)))
+
+(defn move-torpedo [{:keys [torpedo? active?] :as entity}]
+  (if torpedo?
+    (if active?
+      (let [old-x         (:x entity)
+            new-x         (+ old-x torpedo-speed)
+            still-active? (< new-x 1280)
+            new-count     (dec (:count entity))]
+        (if still-active?
+          (assoc entity :x new-x)
+          (assoc entity :x -128 :active? false :count new-count)))
+      (if (launch-torpedo? entity)
+        (assoc entity :x 128 :active? true)
+        entity))
+    entity))
 
 (defn move-submarine [{:keys [submarine?] :as entity}]
   (if submarine?
@@ -72,7 +99,7 @@
         target-x      (:x target)
         target-damage (:damage target)
         submarine-x   (:x (first (filter :submarine? entities)))]
-    (when (> submarine-x target-x)
+    (when (> (+ submarine-x 100) target-x)
       (if (> target-damage 3)
         (reset! game-state :win)
         (reset! game-state :lose))
@@ -84,6 +111,8 @@
   ;; Game On...
   (->> entities
        (map move-submarine)
+       (adjust-torpedo-y)
+       (map move-torpedo)
        (map move-background)))
 
 (defscreen main-screen
