@@ -7,6 +7,8 @@
 (def speed 0.25)
 (def sub-speed 2.5)
 
+(defonce game-state (atom :startup))
+
 ;; --------------------------------------------------------------------------------
 (defscreen title-screen
   :on-show
@@ -14,8 +16,18 @@
     (update! screen :renderer (stage))
     (let [background (texture "TitleBackground.png")
           title-text (assoc (texture "TitleText.png")
-                       :x (/ (- 1280 640) 2), :y (/ (- 720 480) 2))]
-      [background title-text]))
+                       :x (/ (- 1280 640) 2), :y (/ (- 720 480) 2))
+          win-text (assoc (texture "WinText.png")
+                     :x (/ (- 1280 640) 2), :y (/ (- 720 480) 2))
+          lose-text (assoc (texture "LoseText.png")
+                      :x (/ (- 1280 640) 2), :y (/ (- 720 480) 2))
+          the-text (cond
+                    (= @game-state :startup) title-text
+                    (= @game-state :win) win-text
+                    (= @game-state :lose) lose-text)
+          _ (reset! game-state :startup)
+          ]
+      [background the-text]))
 
   :on-render
   (fn [screen entities]
@@ -27,37 +39,52 @@
     (set-screen! ld48 main-screen)))
 
 ;; --------------------------------------------------------------------------------
-(defn- get-direction []
+(defn get-direction []
   (cond
    (key-pressed? :dpad-up) :up
    (key-pressed? :dpad-down) :down))
 
-(defn move-background [{:keys [background?] :as entity}]
-  (if background?
+(defn get-launch [entities]
+  (let [torpedo (first (filter :torpedo? entities))]
+    (and (> (:count torpedo) 0)
+         (not (:active? torpedo))
+         (key-pressed? :dpad-right))))
+
+(defn move-submarine [{:keys [submarine?] :as entity}]
+  (if submarine?
+    (if-let [direction (get-direction)]
+      (let [old-y (:y entity)
+            new-y (case direction
+                    :up (+ old-y sub-speed)
+                    :down (- old-y sub-speed))
+            new-y (min (max new-y 0) (- 720 128))]
+        (assoc entity :y new-y))
+      entity)
+    entity))
+
+(defn move-background [{:keys [background? target?] :as entity}]
+  (if (or background? target?)
     (assoc entity :x (- (:x entity) speed))
     entity))
 
-(defn- update-submarine-position [direction {:keys [submarine?] :as entity}]
-  (if submarine?
-    (let [old-y (:y entity)
-          new-y (case direction
-                  :up (+ old-y sub-speed)
-                  :down (- old-y sub-speed))
-          new-y (min (max new-y 0) (- 720 64))]
-      (assoc entity :y new-y :direction direction))
-    entity))
-
-(defn- move-player [direction entities]
-  (map #(update-submarine-position direction %) entities))
+(defn check-game-over [entities]
+  (let [target        (first (filter :target? entities))
+        target-x      (:x target)
+        target-damage (:damage target)
+        submarine-x   (:x (first (filter :submarine? entities)))]
+    (when (> submarine-x target-x)
+      (if (> target-damage 3)
+        (reset! game-state :win)
+        (reset! game-state :lose))
+      (app! :post-runnable #(set-screen! ld48 title-screen)))))
 
 (defn per-render-update [entities]
-  (let [direction (get-direction)]
-    ;;(if (> (count @current-keycodes) 0)
-    ;;  (println "keycodes=" @current-keycodes))
-    (->> (if direction
-           (move-player direction entities)
-           entities)
-         (map move-background))))
+  ;; Game Over?
+  (check-game-over entities)
+  ;; Game On...
+  (->> entities
+       (map move-submarine)
+       (map move-background)))
 
 (defscreen main-screen
   :on-show
@@ -66,8 +93,12 @@
     (let [background (assoc (texture "MainBackground.png")
                        :x 0 :width (* 4 1280) :background? true)
           submarine (assoc (texture "Submarine.png")
-                      :x 20 :y (/ 720 2) :submarine? true)]
-      [background submarine]))
+                      :x 20 :y (/ 720 2) :submarine? true)
+          torpedo (assoc (texture "torpedo.png")
+                    :x -256 :y 100 :torpedo? true :count 5 :active? false)
+          target (assoc (texture "target.png")
+                   :x (- (* 1 1280) 256) :y (- 720 128) :target? true :damage 0)] ;; FIXME
+      [background submarine torpedo target]))
 
   :on-render
   (fn [screen entities]
@@ -77,14 +108,8 @@
 
   :on-key-down
   (fn [screen entities]
-    (swap! current-keycodes (fn [x] (conj x (:keycode screen))))
     (if (key-pressed? :r)
       (app! :post-runnable #(set-screen! ld48 main-screen)))
-    entities)
-
-  :on-key-up
-  (fn [screen entities]
-    (swap! current-keycodes (fn [x] (disj x (:keycode screen))))
     entities)
 
   )
