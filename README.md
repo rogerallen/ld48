@@ -1,16 +1,23 @@
 ## Introduction
 
-My first play-clj game.  Maybe it is for #LD48?
+My first play-clj game.  #LD48 gave me the excuse to work on it, but
+I'm not entering into the contest.  Just participating in spirit--a
+nice learning experience.  There is lots that could be done to finish
+this off.  Maybe that will happen, maybe not.
+
+![Screenshot](https://github.com/rogerallen/ld48/raw/master/screenshot.png)
 
 ## Running
 
-FIXME checkin .jar by Sunday night.
+FIXME checkin a .jar
 
 ## Contents
 
-* `android/src` Android-specific code
 * `desktop/resources` Images, audio, and other files
 * `desktop/src` Desktop-specific code
+
+All of this is "TBD"
+* `android/src` Android-specific code
 * `desktop/src-common` Cross-platform game code
 * `ios/src` iOS-specific code
 
