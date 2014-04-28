@@ -8,6 +8,9 @@
 (def speed 0.25)
 (def sub-speed 2.5)
 (def torpedo-speed 10.0)
+(def mine-speed 3.0)
+(def max-target-damage 3)
+(def max-submarine-damage 2)
 
 (defonce game-state (atom :startup))
 
@@ -78,6 +81,23 @@
         entity))
     entity))
 
+(defn move-mine [{:keys [mine? active?] :as entity}]
+  (if mine?
+    (if active?
+      (let [new-x (- (:x entity) mine-speed)
+            new-y (- (:y entity) mine-speed)
+            still-active? (and (> new-x -16) (> new-y -16))]
+        (if still-active?
+          (assoc entity :x new-x :y new-y)
+          (assoc entity :x -128 :y -128 :active? false)))
+      entity)
+    entity))
+
+(defn spawn-mine [{:keys [mine? active?] :as entity}]
+  (if (and mine? (not active?))
+    (assoc entity :x (+ 100 (rand-int 400)) :y (- 720 16) :active? true)
+    entity))
+
 (defn move-submarine [{:keys [submarine?] :as entity}]
   (if submarine?
     (if-let [direction (get-direction)]
@@ -95,8 +115,8 @@
     (assoc entity :x (- (:x entity) speed))
     entity))
 
-(defn update-hit-box [{:keys [submarine? torpedo? target?] :as entity}]
-  (if (or submarine? torpedo? target?)
+(defn update-hit-box [{:keys [submarine? torpedo? mine? target?] :as entity}]
+  (if (or submarine? torpedo? mine? target?)
     (assoc entity :hit-box (rectangle (:x entity) (:y entity) (:width entity) (:height entity)))
     entity))
 
@@ -110,30 +130,51 @@
 
 (defn torpedo-target-collision [torpedo target entities]
   (let [new-damage (inc (:damage target))]
-    (if (<= new-damage 3)
+    (if (<= new-damage max-target-damage)
       (map set-target-damage entities)
-      (remove (set target) entities)
-      ;;entities
-      )))
+      (remove (set target) entities))))
+
+(defn set-submarine-damage [{:keys [mine? submarine? damage] :as entity}]
+  (if submarine?
+    (assoc entity :damage (inc damage))
+    (if mine?
+      (assoc entity :x -128 :y -128 :active? false)
+      entity)))
+
+(defn mine-submarine-collision [mine submarine entities]
+  (let [new-damage (inc (:damage submarine))]
+    (if (<= new-damage max-submarine-damage)
+      (map set-submarine-damage entities)
+      (remove (set submarine) entities))))
 
 (defn adjust-damage [entities]
   (let [torpedo (first (filter :torpedo? entities))
         target (first (filter :target? entities))
-        touched-target (rectangle! (:hit-box torpedo) :overlaps (:hit-box target))]
-    (if touched-target
+        mine (first (filter :mine? entities))
+        submarine (first (filter :submarine? entities))
+        torpedo-touched-target (rectangle! (:hit-box torpedo) :overlaps (:hit-box target))
+        mine-touched-submarine (rectangle! (:hit-box mine) :overlaps (:hit-box submarine))]
+    (if torpedo-touched-target
       (torpedo-target-collision torpedo target entities)
-      entities)))
+      (if mine-touched-submarine
+        (mine-submarine-collision mine submarine entities)
+        entities))))
 
 (defn check-game-over [entities]
   (let [target        (first (filter :target? entities))
         target-x      (:x target)
         target-damage (:damage target)
-        submarine-x   (:x (first (filter :submarine? entities)))]
-    (when (>= target-damage 3)
+        submarine     (first (filter :submarine? entities))
+        submarine-damage (:damage submarine)
+        submarine-x   (:x submarine)]
+    (when (>= submarine-damage max-submarine-damage)
+      (reset! game-state :lose)
+      (app! :post-runnable #(set-screen! ld48 title-screen)))
+    (when (>= target-damage max-target-damage)
       (reset! game-state :win)
       (app! :post-runnable #(set-screen! ld48 title-screen)))
     (when (> (+ submarine-x 100) target-x)
-        (if (> target-damage 3)
+        (if (> target-damage max-target-damage)
           (reset! game-state :win)
           (reset! game-state :lose))
         (app! :post-runnable #(set-screen! ld48 title-screen)))))
@@ -146,6 +187,7 @@
        (map move-submarine)
        (adjust-torpedo-y)
        (map move-torpedo)
+       (map move-mine)
        (map move-background)
        (map update-hit-box)
        (adjust-damage)))
@@ -154,15 +196,18 @@
   :on-show
   (fn [screen entities]
     (update! screen :renderer (stage))
+    (add-timer! screen :spawn-mine 1 2)
     (let [background (assoc (texture "MainBackground.png")
                        :x 0 :width (* 4 1280) :background? true)
           submarine (assoc (texture "Submarine.png")
-                      :x 20 :y (/ 720 2) :width 128 :height 64 :submarine? true)
+                      :x 20 :y (/ 720 2) :width 128 :height 64 :submarine? true :damage 0)
           torpedo (assoc (texture "torpedo.png")
                     :x -256 :y 100 :width 64 :height 16 :torpedo? true :count 5 :active? false)
+          mine (assoc (texture "mine.png")
+                    :x -100 :y -100 :width 16 :height 16 :mine? true :active? false)
           target (assoc (texture "target.png")
                    :x (- (* 1 1280) 256) :y (- 720 128) :width 256 :height 128 :target? true :damage 0)] ;; FIXME
-      [background submarine torpedo target]))
+      [background submarine torpedo mine target]))
 
   :on-render
   (fn [screen entities]
@@ -175,6 +220,11 @@
     (if (key-pressed? :r)
       (app! :post-runnable #(set-screen! ld48 main-screen)))
     entities)
+
+  :on-timer
+  (fn [screen entities]
+    (case (:id screen)
+      :spawn-mine (map spawn-mine entities)))
 
   )
 
